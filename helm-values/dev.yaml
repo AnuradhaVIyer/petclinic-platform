@@ -1,0 +1,13 @@
+# helm-values/dev.yaml
+# Dev environment overrides — merged on top of helm-values/{service}.yaml by ArgoCD / helm upgrade
+# Usage: helm upgrade --install {svc} helm/petclinic-service/ -f helm-values/{svc}.yaml -f helm-values/dev.yaml
+
+replicaCount: 1
+
+# No HPA in dev — fixed single replica per service
+autoscaling:
+  enabled: false
+
+# No PDB in dev — single replica means PDB would block all maintenance
+podDisruptionBudget:
+  enabled: false

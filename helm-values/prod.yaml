@@ -1,0 +1,41 @@
+# helm-values/prod.yaml
+# Prod environment overrides — merged on top of helm-values/{service}.yaml by ArgoCD / helm upgrade
+#
+# Per-service replica counts, HPA, and PDB are set here to match k8s/overlays/prod/ exactly.
+# HPA/PDB values are overridden per-service below — this file enables them globally for prod.
+#
+# Per-service HPA targets (from k8s/overlays/prod/hpa.yaml):
+#   api-gateway:        min=2, max=6
+#   customers-service:  min=2, max=4
+#   visits-service:     min=2, max=4
+#   vets-service:       min=2, max=4
+#   genai-service:      min=1, max=3
+#   config-server:      no HPA
+#   discovery-server:   no HPA
+#   admin-server:       no HPA
+#
+# PDB (minAvailable=1) applies to: config-server, discovery-server, api-gateway,
+#   customers-service, visits-service, vets-service
+# No PDB for: genai-service (min=1 HPA), admin-server (single replica)
+#
+# NOTE: This file sets the baseline prod defaults. Per-service HPA/PDB values
+# that differ from the defaults must be set in the per-service values files when
+# deploying to prod. ArgoCD merges: helm-values/{service}.yaml + helm-values/prod.yaml
+# The per-service file is loaded first; prod.yaml overrides on top.
+# For HPA min/max, set them in per-service files; prod.yaml only enables autoscaling.
+
+# Default prod replica count — overridden per-service where different
+replicaCount: 2
+
+# Enable autoscaling by default in prod.
+# Per-service min/max are set in the per-service values files to avoid blanket defaults.
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+# Enable PDB by default in prod
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

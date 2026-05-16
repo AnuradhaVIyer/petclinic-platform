@@ -95,3 +95,16 @@ petclinic-platform/
 |-------------|---------------|-----|---------|
 | dev | `petclinic-dev` | db.t4g.micro, single-AZ (free tier) | Development & testing |
 | prod | `petclinic-prod` | db.t4g.micro, single-AZ (free tier) | Production |
+
+## ECR Initial Image Push
+
+Create the ECR repositories with Terraform first, then build and push the initial ARM64 images:
+
+```bash
+cd petclinic-platform
+terraform -chdir=terraform/environments/dev apply
+./scripts/ecr-login.sh --region eu-central-1
+./scripts/build-push-ecr.sh --env dev --region eu-central-1 --tag v1.0.0 --app-repo ../spring-petclinic-microservices
+```
+
+The build helper runs Maven to create the JARs, then uses `docker buildx build --platform linux/arm64` with the shared application Dockerfile and pushes images as `{account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/{service}:v1.0.0`.

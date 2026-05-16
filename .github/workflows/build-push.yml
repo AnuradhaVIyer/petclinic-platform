@@ -1,0 +1,150 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      changed_services: ${{ steps.matrix.outputs.changed_services }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed services
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            config-server:
+              - 'spring-petclinic-config-server/**'
+
+            discovery-server:
+              - 'spring-petclinic-discovery-server/**'
+
+            api-gateway:
+              - 'spring-petclinic-api-gateway/**'
+
+            customers-service:
+              - 'spring-petclinic-customers-service/**'
+
+            visits-service:
+              - 'spring-petclinic-visits-service/**'
+
+            vets-service:
+              - 'spring-petclinic-vets-service/**'
+
+            admin-server:
+              - 'spring-petclinic-admin-server/**'
+
+            genai-service:
+              - 'spring-petclinic-genai-service/**'
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          SERVICES=()
+
+          if [[ "${{ steps.filter.outputs.config-server }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"config-server\",\"path\":\"spring-petclinic-config-server\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.discovery-server }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"discovery-server\",\"path\":\"spring-petclinic-discovery-server\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.api-gateway }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"api-gateway\",\"path\":\"spring-petclinic-api-gateway\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.customers-service }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"customers-service\",\"path\":\"spring-petclinic-customers-service\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.visits-service }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"visits-service\",\"path\":\"spring-petclinic-visits-service\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.vets-service }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"vets-service\",\"path\":\"spring-petclinic-vets-service\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.admin-server }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"admin-server\",\"path\":\"spring-petclinic-admin-server\"}")
+          fi
+
+          if [[ "${{ steps.filter.outputs.genai-service }}" == "true" ]]; then
+            SERVICES+=("{\"service\":\"genai-service\",\"path\":\"spring-petclinic-genai-service\"}")
+          fi
+
+          MATRIX=$(printf '%s\n' "${SERVICES[@]}" | jq -s .)
+
+          CHANGED=$(printf '%s\n' "${SERVICES[@]}" | jq -r '.[].service' | jq -R . | jq -s .)
+
+          echo "matrix={\"include\":${MATRIX}}" >> $GITHUB_OUTPUT
+          echo "changed_services=${CHANGED}" >> $GITHUB_OUTPUT
+
+  build-and-push:
+    needs: detect-changes
+
+    if: ${{ fromJson(needs.detect-changes.outputs.matrix).include[0] != null }}
+
+    strategy:
+      fail-fast: false
+
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+
+    uses: ./.github/workflows/docker-build-push.yml
+
+    with:
+      service-name: ${{ matrix.service }}
+      service-path: ${{ matrix.path }}
+
+      aws-region: eu-central-1
+
+      aws-role: arn:aws:iam::<AWS_ACCOUNT_ID>:role/petclinic-dev-github-actions-role
+
+      ecr-registry: <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com
+      environment: dev
+
+  notify-platform:
+    needs:
+      - detect-changes
+      - build-and-push
+
+    runs-on: ubuntu-latest
+
+    if: ${{ needs.detect-changes.outputs.changed_services != '[]' }}
+
+    steps:
+      - name: Dispatch update event to platform repo
+        env:
+          PLATFORM_REPO_TOKEN: ${{ secrets.PLATFORM_REPO_TOKEN }}
+
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${PLATFORM_REPO_TOKEN}" \
+            https://api.github.com/repos/<YOUR_GITHUB_USERNAME>/petclinic-platform/dispatches \
+            -d @- <<EOF
+          {
+            "event_type": "app-image-built",
+            "client_payload": {
+              "sha": "${GITHUB_SHA::7}",
+              "services": ${{ needs.detect-changes.outputs.changed_services }}
+            }
+          }
+          EOF

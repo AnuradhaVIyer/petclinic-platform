@@ -1,0 +1,80 @@
+# helm/petclinic-service/values.yaml
+# Defaults shared by all services. Override via helm-values/{service}.yaml and helm-values/{env}.yaml.
+
+replicaCount: 1
+
+image:
+  repository: ""      # Required: {account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}
+  tag: "latest"       # Overridden by CI via: yq -i ".image.tag = \"${SHA}\"" helm-values/{service}.yaml
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8080          # Overridden per-service
+
+# component label value — overridden per-service (server|service|gateway|admin)
+component: service
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  startup:
+    path: /actuator/health
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# ConfigMap data — non-secret environment config, merged into envFrom
+configMap:
+  SPRING_PROFILES_ACTIVE: "docker"
+  CONFIG_SERVER_URL: "http://config-server:8888"
+
+# Additional env vars rendered as valueFrom (secrets, etc.)
+# Each entry: { name, valueFrom: { secretKeyRef: { name, key } } }
+env: []
+
+# Init containers for startup-order enforcement (busybox:1.36 wget loops)
+initContainers: []
+
+# ServiceAccount IRSA annotation — set per-service if the SA needs AWS access
+serviceAccount:
+  annotations: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false   # Spring Boot needs /tmp for uploads and caching

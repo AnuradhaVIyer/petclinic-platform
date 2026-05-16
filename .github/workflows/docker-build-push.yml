@@ -1,0 +1,104 @@
+name: Docker Build Push
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        required: true
+        type: string
+
+      service-path:
+        required: true
+        type: string
+
+      aws-region:
+        required: true
+        type: string
+
+      aws-role:
+        required: true
+        type: string
+
+      ecr-registry:
+        required: true
+        type: string
+
+      environment:
+        required: false
+        type: string
+        default: dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    outputs:
+      image-tag: ${{ steps.vars.outputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-role }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Configure QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set variables
+        id: vars
+        run: |
+          echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          case "${{ inputs.service-name }}" in
+            config-server) echo "exposed_port=8888" >> $GITHUB_OUTPUT ;;
+            discovery-server) echo "exposed_port=8761" >> $GITHUB_OUTPUT ;;
+            api-gateway) echo "exposed_port=8080" >> $GITHUB_OUTPUT ;;
+            customers-service) echo "exposed_port=8081" >> $GITHUB_OUTPUT ;;
+            visits-service) echo "exposed_port=8082" >> $GITHUB_OUTPUT ;;
+            vets-service) echo "exposed_port=8083" >> $GITHUB_OUTPUT ;;
+            genai-service) echo "exposed_port=8084" >> $GITHUB_OUTPUT ;;
+            admin-server) echo "exposed_port=9090" >> $GITHUB_OUTPUT ;;
+            *) echo "Unknown service ${{ inputs.service-name }}" >&2; exit 1 ;;
+          esac
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Maven JAR
+        run: |
+          ./mvnw clean package -DskipTests -pl ./${{ inputs.service-path }} -am
+
+      - name: Build ARM64 image
+        run: |
+          JAR="$(find ./${{ inputs.service-path }}/target -maxdepth 1 -type f -name '${{ inputs.service-path }}-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n 1)"
+          ARTIFACT_NAME="$(basename "${JAR}" .jar)"
+          IMAGE="${{ inputs.ecr-registry }}/petclinic-${{ inputs.environment }}/${{ inputs.service-name }}:${GITHUB_SHA::7}"
+
+          docker buildx build \
+            --platform linux/arm64 \
+            --file ./docker/Dockerfile \
+            --build-arg "ARTIFACT_NAME=${ARTIFACT_NAME}" \
+            --build-arg "EXPOSED_PORT=${{ steps.vars.outputs.exposed_port }}" \
+            --tag "${IMAGE}" \
+            --load \
+            "./${{ inputs.service-path }}/target"
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.22.0
+        with:
+          image-ref: ${{ inputs.ecr-registry }}/petclinic-${{ inputs.environment }}/${{ inputs.service-name }}:${GITHUB_SHA::7}
+          format: table
+          exit-code: 1
+          ignore-unfixed: true
+          severity: CRITICAL
+
+      - name: Push image to ECR
+        run: |
+          docker push \
+            ${{ inputs.ecr-registry }}/petclinic-${{ inputs.environment }}/${{ inputs.service-name }}:${GITHUB_SHA::7}

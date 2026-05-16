@@ -1,0 +1,63 @@
+name: Update Image Tags
+
+on:
+  repository_dispatch:
+    types:
+      - app-image-built
+
+permissions:
+  contents: write
+
+jobs:
+  update-tags:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout platform repo
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Update image tags
+        env:
+          IMAGE_TAG: ${{ github.event.client_payload.sha }}
+        run: |
+          services=(
+            config-server
+            discovery-server
+            api-gateway
+            customers-service
+            visits-service
+            vets-service
+            admin-server
+            genai-service
+          )
+
+          for service in "${services[@]}"
+          do
+            file="helm-values/${service}.yaml"
+
+            echo "Updating ${file}"
+
+            yq -i '.image.tag = strenv(IMAGE_TAG)' "${file}"
+          done
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add helm-values/
+
+          git commit -m "Update image tags to ${GITHUB_SHA}" || echo "No changes"
+
+      - name: Push changes
+        run: |
+          git push
+
+

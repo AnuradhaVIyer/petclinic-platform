@@ -1,0 +1,20 @@
+# k8s/argocd/install/install.yaml
+#
+# This file must be downloaded before applying. Run:
+#
+#   curl -sL https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml \
+#     -o k8s/argocd/install/install.yaml
+#
+# Then apply:
+#   kubectl apply -n argocd -f k8s/argocd/install/
+#
+# Pin a specific version (recommended for production):
+#   curl -sL https://raw.githubusercontent.com/argoproj/argo-cd/v2.12.3/manifests/install.yaml \
+#     -o k8s/argocd/install/install.yaml
+#
+# After install, retrieve the admin password:
+#   kubectl -n argocd get secret argocd-initial-admin-secret \
+#     -o jsonpath="{.data.password}" | base64 -d && echo
+#
+# Access the UI:
+#   kubectl port-forward svc/argocd-server -n argocd 8443:443

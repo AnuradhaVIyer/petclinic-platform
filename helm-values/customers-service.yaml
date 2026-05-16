@@ -1,0 +1,58 @@
+# helm-values/customers-service.yaml
+# Customers Service — MySQL-backed, secret refs match k8s/base/customers-service/deployment.yaml
+
+image:
+  repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/customers-service"
+  tag: "latest"
+
+service:
+  port: 8081
+
+component: service
+
+configMap:
+  SPRING_PROFILES_ACTIVE: "docker,mysql"
+  CONFIG_SERVER_URL: "http://config-server:8888"
+  SPRING_DATASOURCE_URL: "jdbc:mysql://<rds-endpoint>:3306/petclinic"
+
+# Secret refs — secret name and keys must match ESO-synced secret from k8s/base/
+env:
+  - name: SPRING_DATASOURCE_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: username
+  - name: SPRING_DATASOURCE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: password
+
+initContainers:
+  - name: wait-for-config-server
+    image: busybox:1.36
+    command: ['sh', '-c', 'until wget -qO- http://config-server:8888/actuator/health; do echo "waiting for config-server"; sleep 5; done']
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+  - name: wait-for-discovery-server
+    image: busybox:1.36
+    command: ['sh', '-c', 'until wget -qO- http://discovery-server:8761/actuator/health; do echo "waiting for discovery-server"; sleep 5; done']
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+
+# Prod: HPA min=2 max=4 (from k8s/overlays/prod/hpa.yaml), PDB enabled
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
