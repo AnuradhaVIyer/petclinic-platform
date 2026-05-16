@@ -1,0 +1,155 @@
+name: "Terraform — Dev Infrastructure"
+
+# Triggers:
+#   - Push to main that touches dev Terraform files → auto plan + apply
+#   - PR targeting main that touches dev Terraform files → plan only (posted as PR comment)
+#   - Manual dispatch → choose plan or apply
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/environments/dev/**"
+      - "terraform/modules/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/environments/dev/**"
+      - "terraform/modules/**"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to run"
+        required: true
+        default: "plan"
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  id-token: write   # Required for OIDC federation
+  contents: read
+  pull-requests: write  # Required to post plan output as PR comment
+
+env:
+  TF_VERSION: "1.6.0"
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  WORKING_DIR: terraform/environments/dev
+
+jobs:
+  terraform-dev:
+    name: "Terraform Dev — ${{ github.event.inputs.action || (github.event_name == 'pull_request' && 'plan') || 'apply' }}"
+    runs-on: ubuntu-latest
+    environment: dev   # Links to GitHub Environment for audit trail
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout
+      # -----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Configure AWS credentials via OIDC — no long-lived keys
+      # -----------------------------------------------------------------------
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-terraform-dev
+
+      # -----------------------------------------------------------------------
+      # 3. Set up Terraform
+      # -----------------------------------------------------------------------
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # -----------------------------------------------------------------------
+      # 4. Format check — fails the run if any .tf file is unformatted
+      # -----------------------------------------------------------------------
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true   # Still post the plan; fmt failure annotates the PR
+
+      # -----------------------------------------------------------------------
+      # 5. Init — downloads providers, configures S3 backend
+      # -----------------------------------------------------------------------
+      - name: Terraform Init
+        id: init
+        run: terraform init -input=false
+
+      # -----------------------------------------------------------------------
+      # 6. Validate — checks syntax and internal consistency
+      # -----------------------------------------------------------------------
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      # -----------------------------------------------------------------------
+      # 7. Plan — always runs (on PRs, pushes, and manual dispatches)
+      # -----------------------------------------------------------------------
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -out=plan.out \
+            2>&1 | tee plan.txt
+        # plan.out is the binary saved plan; plan.txt is human-readable for the PR comment
+
+      # -----------------------------------------------------------------------
+      # 8. Post plan output as PR comment
+      # -----------------------------------------------------------------------
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ env.WORKING_DIR }}/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n\n... truncated (60k char limit) ...'
+              : plan;
+            const output = `## Terraform Plan — Dev 🌍
+
+            | Step | Result |
+            |------|--------|
+            | Format | \`${{ steps.fmt.outcome }}\` |
+            | Init   | \`${{ steps.init.outcome }}\` |
+            | Validate | \`${{ steps.validate.outcome }}\` |
+            | Plan   | \`${{ steps.plan.outcome }}\` |
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+
+            </details>
+
+            *Triggered by @${{ github.actor }} on \`${{ github.ref_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      # -----------------------------------------------------------------------
+      # 9. Apply — runs on push to main OR manual dispatch with action=apply
+      #    Never runs on pull_request events
+      # -----------------------------------------------------------------------
+      - name: Terraform Apply
+        if: >
+          github.event_name != 'pull_request' &&
+          (github.event_name == 'push' ||
+           github.event.inputs.action == 'apply')
+        run: terraform apply -input=false -auto-approve plan.out

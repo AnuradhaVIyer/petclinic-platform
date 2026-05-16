@@ -117,7 +117,7 @@ output "rds_jdbc_url" {
 
 # --- DNS & Ingress ---
 
-output "dns_zone_id" {
+/*output "dns_zone_id" {
   description = "Route 53 hosted zone ID"
   value       = module.dns.zone_id
 }
@@ -145,4 +145,4 @@ output "lb_controller_role_arn" {
 output "lb_controller_policy_arn" {
   description = "IAM policy ARN for the AWS Load Balancer Controller"
   value       = module.dns.lb_controller_policy_arn
-}
+}*/
