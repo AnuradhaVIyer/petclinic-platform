@@ -3,17 +3,13 @@
 
 image:
   repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/config-server"
-  tag: "latest"   # updated by CI: yq -i ".image.tag = \"${SHA}\""
-
+  tag: "d8969d4" # updated by CI: yq -i ".image.tag = \"${SHA}\""
 service:
   port: 8888
-
 component: server
-
 configMap:
   SPRING_PROFILES_ACTIVE: "docker"
   GIT_REPO: "https://github.com/spring-petclinic/spring-petclinic-microservices-config"
-
 # Config Server: all three probes use /actuator/health (no readiness/liveness split)
 probes:
   startup:
@@ -31,16 +27,13 @@ probes:
     periodSeconds: 15
     timeoutSeconds: 5
     failureThreshold: 3
-
 # No init containers — Config Server is the first service to start
 initContainers: []
-
 # Prod: 2 replicas, PDB enabled, no HPA (stable infra service)
 # These are picked up when merged with helm-values/prod.yaml
 # To disable HPA for this service in prod, set per-service:
 autoscaling:
   enabled: false
-
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
