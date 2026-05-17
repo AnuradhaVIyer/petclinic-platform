@@ -3,7 +3,7 @@
 
 image:
   repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/visits-service"
-  tag: "d8969d4"
+  tag: "ecba47b"
 service:
   port: 8082
 component: service

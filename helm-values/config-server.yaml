@@ -3,7 +3,7 @@
 
 image:
   repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/config-server"
-  tag: "d8969d4" # updated by CI: yq -i ".image.tag = \"${SHA}\""
+  tag: "ecba47b" # updated by CI: yq -i ".image.tag = \"${SHA}\""
 service:
   port: 8888
 component: server
