@@ -30,7 +30,7 @@ permissions:
   pull-requests: write  # Required to post plan output as PR comment
 
 env:
-  TF_VERSION: "1.11.0"   # was 1.6.0
+  TF_VERSION: "1.11.0"
   AWS_REGION: ${{ secrets.AWS_REGION }}
   WORKING_DIR: terraform/environments/dev
 
@@ -38,7 +38,7 @@ jobs:
   terraform-dev:
     name: "Terraform Dev — ${{ github.event.inputs.action || (github.event_name == 'pull_request' && 'plan') || 'apply' }}"
     runs-on: ubuntu-latest
-    environment: dev   # Links to GitHub Environment for audit trail
+    environment: dev
 
     defaults:
       run:
@@ -70,12 +70,17 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       # -----------------------------------------------------------------------
-      # 4. Format check — fails the run if any .tf file is unformatted
+      # 4. Format — check on PRs, auto-fix on push/dispatch
       # -----------------------------------------------------------------------
-      - name: Terraform Format Check
+      - name: Terraform Format
         id: fmt
-        run: terraform fmt -check -recursive
-        continue-on-error: true   # Still post the plan; fmt failure annotates the PR
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            terraform fmt -check -recursive
+          else
+            terraform fmt -recursive
+          fi
+        continue-on-error: true
 
       # -----------------------------------------------------------------------
       # 5. Init — downloads providers, configures S3 backend
@@ -92,7 +97,7 @@ jobs:
         run: terraform validate -no-color
 
       # -----------------------------------------------------------------------
-      # 7. Plan — always runs (on PRs, pushes, and manual dispatches)
+      # 7. Plan
       # -----------------------------------------------------------------------
       - name: Terraform Plan
         id: plan
@@ -100,9 +105,9 @@ jobs:
           terraform plan \
             -input=false \
             -no-color \
+            -lock-timeout=5m \
             -out=plan.out \
             2>&1 | tee plan.txt
-        # plan.out is the binary saved plan; plan.txt is human-readable for the PR comment
 
       # -----------------------------------------------------------------------
       # 8. Post plan output as PR comment
@@ -121,10 +126,10 @@ jobs:
 
             | Step | Result |
             |------|--------|
-            | Format | \`${{ steps.fmt.outcome }}\` |
-            | Init   | \`${{ steps.init.outcome }}\` |
+            | Format   | \`${{ steps.fmt.outcome }}\` |
+            | Init     | \`${{ steps.init.outcome }}\` |
             | Validate | \`${{ steps.validate.outcome }}\` |
-            | Plan   | \`${{ steps.plan.outcome }}\` |
+            | Plan     | \`${{ steps.plan.outcome }}\` |
 
             <details><summary>Show Plan</summary>
 
@@ -144,12 +149,20 @@ jobs:
             });
 
       # -----------------------------------------------------------------------
-      # 9. Apply — runs on push to main OR manual dispatch with action=apply
-      #    Never runs on pull_request events
+      # 9. Apply — push to main or manual dispatch with action=apply
+      #    Guarded: only runs if plan succeeded and plan.out exists
       # -----------------------------------------------------------------------
       - name: Terraform Apply
         if: >
+          steps.plan.outcome == 'success' &&
           github.event_name != 'pull_request' &&
           (github.event_name == 'push' ||
            github.event.inputs.action == 'apply')
-        run: terraform apply -input=false -auto-approve plan.out
+        run: terraform apply -input=false -auto-approve -lock-timeout=5m plan.out
+
+      # -----------------------------------------------------------------------
+      # 10. Release stale lock if workflow is cancelled mid-run
+      # -----------------------------------------------------------------------
+      - name: Release state lock on cancellation
+        if: cancelled()
+        run: terraform force-unlock -force $(cat plan.txt | grep -oP 'ID:\s+\K[\w-]+' | head -1 || echo "") 2>/dev/null || true

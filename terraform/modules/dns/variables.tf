@@ -17,6 +17,7 @@ variable "environment" {
 variable "domain_name" {
   description = "Existing Route 53 hosted zone domain name"
   type        = string
+  default     = ""   # Empty string disables DNS/ingress resources when not set
 
   validation {
     condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+\\.?$", var.domain_name))

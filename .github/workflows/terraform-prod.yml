@@ -34,7 +34,7 @@ permissions:
   pull-requests: write
 
 env:
-  TF_VERSION: "1.11.0"   # was 1.6.0
+  TF_VERSION: "1.11.0"
   AWS_REGION: ${{ secrets.AWS_REGION }}
   WORKING_DIR: terraform/environments/prod
 
@@ -69,9 +69,15 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform Format Check
+      # Format — check on PRs, auto-fix on push/dispatch
+      - name: Terraform Format
         id: fmt
-        run: terraform fmt -check -recursive
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            terraform fmt -check -recursive
+          else
+            terraform fmt -recursive
+          fi
         continue-on-error: true
 
       - name: Terraform Init
@@ -89,6 +95,8 @@ jobs:
             -input=false \
             -no-color \
             -detailed-exitcode \
+            -lock-timeout=5m \
+            -var="domain_name=anveantechnologies.com" \
             -out=plan.out \
             2>&1 | tee plan.txt
           echo "exitcode=$?" >> $GITHUB_OUTPUT
@@ -121,10 +129,10 @@ jobs:
 
             | Step | Result |
             |------|--------|
-            | Format | \`${{ steps.fmt.outcome }}\` |
-            | Init   | \`${{ steps.init.outcome }}\` |
+            | Format   | \`${{ steps.fmt.outcome }}\` |
+            | Init     | \`${{ steps.init.outcome }}\` |
             | Validate | \`${{ steps.validate.outcome }}\` |
-            | Plan   | \`${{ steps.plan.outcome }}\` |
+            | Plan     | \`${{ steps.plan.outcome }}\` |
 
             <details><summary>Show Plan</summary>
 
@@ -142,6 +150,11 @@ jobs:
               repo: context.repo.repo,
               body: output
             });
+
+      # Release stale lock if workflow is cancelled during plan
+      - name: Release state lock on cancellation
+        if: cancelled()
+        run: terraform force-unlock -force $(cat plan.txt | grep -oP 'ID:\s+\K[\w-]+' | head -1 || echo "") 2>/dev/null || true
 
   # ---------------------------------------------------------------------------
   # Job 2: Apply — manual dispatch only, gated by GitHub Environment approval
@@ -191,4 +204,9 @@ jobs:
           path: ${{ env.WORKING_DIR }}
 
       - name: Terraform Apply
-        run: terraform apply -input=false -auto-approve plan.out
+        run: terraform apply -input=false -auto-approve -lock-timeout=5m plan.out
+
+      # Release stale lock if workflow is cancelled during apply
+      - name: Release state lock on cancellation
+        if: cancelled()
+        run: terraform force-unlock -force $(cat plan.txt | grep -oP 'ID:\s+\K[\w-]+' | head -1 || echo "") 2>/dev/null || true

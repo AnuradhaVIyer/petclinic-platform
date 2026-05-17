@@ -48,3 +48,15 @@ module "rds" {
   skip_final_snapshot     = false
   deletion_protection     = var.rds_deletion_protection
 }
+
+module "dns" {
+  source = "../../modules/dns"
+
+  project           = var.project
+  environment       = var.environment
+  domain_name       = var.domain_name
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+  create_app_record = var.dns_create_app_record
+  alb_name          = var.dns_alb_name
+}

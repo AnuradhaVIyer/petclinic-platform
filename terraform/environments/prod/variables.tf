@@ -122,3 +122,25 @@ variable "rds_deletion_protection" {
   type        = bool
   default     = false
 }
+
+
+# --- DNS & Ingress ---
+
+variable "domain_name" {
+  description = "Existing Route 53 hosted zone domain name"
+  type        = string
+  default     = ""   # Empty string disables DNS/ingress resources when not set
+}
+
+variable "dns_create_app_record" {
+  description = "Whether to create the Route 53 alias record for the Ingress-managed ALB"
+  type        = bool
+  default     = false
+}
+
+variable "dns_alb_name" {
+  description = "Name of the ALB created by the Kubernetes Ingress"
+  type        = string
+  default     = "petclinic-dev-alb"
+}
+

@@ -128,6 +128,7 @@ variable "rds_deletion_protection" {
 variable "domain_name" {
   description = "Existing Route 53 hosted zone domain name"
   type        = string
+  default     = ""   # Empty string disables DNS/ingress resources when not set
 }
 
 variable "dns_create_app_record" {
