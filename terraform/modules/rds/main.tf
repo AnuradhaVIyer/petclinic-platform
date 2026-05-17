@@ -18,6 +18,7 @@ resource "random_password" "master" {
 
 resource "aws_secretsmanager_secret" "rds_credentials" {
   name        = "${var.project}/${var.environment}/rds-credentials"
+  recovery_window_in_days = 0   # allow immediate deletion/recreation
   description = "RDS master credentials for ${local.db_identifier}"
 
   tags = merge(local.common_tags, {
