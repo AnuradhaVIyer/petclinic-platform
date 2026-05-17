@@ -93,6 +93,13 @@ resource "aws_db_instance" "mysql" {
     var.skip_final_snapshot ? null : "${local.db_identifier}-final-snapshot"
   )
 
+  lifecycle {
+    precondition {
+      condition     = var.max_allocated_storage > var.allocated_storage
+      error_message = "max_allocated_storage (${var.max_allocated_storage}) must be greater than allocated_storage (${var.allocated_storage}) to enable storage autoscaling."
+    }
+  }
+
   apply_immediately = var.apply_immediately
 
   tags = merge(local.common_tags, {

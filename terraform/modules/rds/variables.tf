@@ -50,11 +50,7 @@ variable "max_allocated_storage" {
   description = "Maximum autoscaled storage in GB"
   type        = number
   default     = 100
-
-  validation {
-    condition     = var.max_allocated_storage > var.allocated_storage
-    error_message = "max_allocated_storage must be greater than allocated_storage so storage autoscaling is enabled."
-  }
+  
 }
 
 variable "storage_type" {
