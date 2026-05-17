@@ -104,13 +104,22 @@ jobs:
       - name: Cleanup failed ArgoCD install
         run: |
           kubectl delete namespace argocd --ignore-not-found=true
-          kubectl wait --for=delete namespace/argocd --timeout=180s || true
+          # Wait for deletion
+          kubectl wait --for=delete namespace/argocd --timeout=300s || true
+
+          # Remove leftover CRDs
+          kubectl delete crd applications.argoproj.io --ignore-not-found=true
+          kubectl delete crd applicationsets.argoproj.io --ignore-not-found=true
+          kubectl delete crd appprojects.argoproj.io --ignore-not-found=true
         
       - name: Create argocd namespace
         run: kubectl apply -f k8s/argocd/install/namespace.yaml
 
       - name: Install ArgoCD
-        run: kubectl create -n argocd -f k8s/argocd/install/install.yaml
+        #run: kubectl create -n argocd -f k8s/argocd/install/install.yaml
+        run: | 
+          kubectl apply --server-side -n argocd \
+          -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
       - name: Wait for ArgoCD server
         run: |
