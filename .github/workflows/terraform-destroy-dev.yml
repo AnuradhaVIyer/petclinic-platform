@@ -1,0 +1,42 @@
+name: terraform-destroy-dev
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-destroy-dev:
+    name: Destroy Dev Infrastructure
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: terraform/environments/dev
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-central-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan Destroy
+        run: terraform plan -destroy -out=destroy.tfplan
+
+      - name: Terraform Destroy
+        run: terraform apply -auto-approve destroy.tfplan
