@@ -100,11 +100,17 @@ jobs:
       # -----------------------------------------------------------------------
       # Install ArgoCD
       # -----------------------------------------------------------------------
+
+      - name: Cleanup failed ArgoCD install
+        run: |
+          kubectl delete namespace argocd --ignore-not-found=true
+          kubectl wait --for=delete namespace/argocd --timeout=180s || true
+        
       - name: Create argocd namespace
         run: kubectl apply -f k8s/argocd/install/namespace.yaml
 
       - name: Install ArgoCD
-        run: kubectl apply -n argocd -f k8s/argocd/install/install.yaml
+        run: kubectl create -n argocd -f k8s/argocd/install/install.yaml
 
       - name: Wait for ArgoCD server
         run: |
