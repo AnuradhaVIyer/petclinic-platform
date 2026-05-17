@@ -20,12 +20,14 @@ jobs:
         run: |
           sudo wget -qO /usr/local/bin/yq \
             https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Update image tags
+      - name: Update image tags and repository URLs
         env:
           IMAGE_TAG: ${{ github.event.client_payload.sha }}
+          ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ENVIRONMENT: dev
         run: |
           services=(
             config-server
@@ -38,26 +40,27 @@ jobs:
             genai-service
           )
 
-          for service in "${services[@]}"
-          do
+          for service in "${services[@]}"; do
             file="helm-values/${service}.yaml"
-
             echo "Updating ${file}"
 
+            # Update image tag
             yq -i '.image.tag = strenv(IMAGE_TAG)' "${file}"
+
+            # Inject repository URL — no hardcoding in yaml files
+            REPO="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/petclinic-${ENVIRONMENT}/${service}"
+            yq -i ".image.repository = \"${REPO}\"" "${file}"
+
+            echo "  tag=${IMAGE_TAG}"
+            echo "  repository=${REPO}"
           done
 
       - name: Commit changes
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add helm-values/
-
-          git commit -m "Update image tags to ${GITHUB_SHA}" || echo "No changes"
+          git commit -m "ci: update image tags to ${{ github.event.client_payload.sha }}" || echo "No changes"
 
       - name: Push changes
-        run: |
-          git push
-
-
+        run: git push

@@ -1,0 +1,179 @@
+name: "Bootstrap — Install ArgoCD"
+
+# One-time workflow to install ArgoCD on the EKS cluster and apply
+# Application CRDs. Run manually after Terraform has created the cluster.
+# After this runs once, ArgoCD takes over all future deployments.
+#
+# Location: .github/workflows/bootstrap-argocd.yml (platform repo)
+# Trigger:  Manual — Actions → Bootstrap — Install ArgoCD → Run workflow
+# Run once: after terraform-dev.yml completes successfully
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: write   # needed to commit repoURL fix
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  CLUSTER_NAME: petclinic-${{ github.event.inputs.environment }}
+
+jobs:
+  bootstrap-argocd:
+    name: "Bootstrap ArgoCD — ${{ github.event.inputs.environment }}"
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # AWS credentials via OIDC
+      # -----------------------------------------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-argocd-bootstrap
+
+      # -----------------------------------------------------------------------
+      # Install kubectl
+      # -----------------------------------------------------------------------
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "latest"
+
+      # -----------------------------------------------------------------------
+      # Configure kubeconfig for EKS
+      # -----------------------------------------------------------------------
+      - name: Configure kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
+
+      # -----------------------------------------------------------------------
+      # Verify cluster connection
+      # -----------------------------------------------------------------------
+      - name: Verify cluster connection
+        run: kubectl get nodes
+
+      # -----------------------------------------------------------------------
+      # Fix repoURL placeholder in Application CRDs
+      # github.repository returns "username/repo" automatically — no hardcoding
+      # -----------------------------------------------------------------------
+      - name: Fix repoURL in Application CRDs
+        run: |
+          REPO_URL="https://github.com/${{ github.repository }}.git"
+          echo "Setting repoURL to: ${REPO_URL}"
+
+          sed -i "s|https://github.com/<your-org>/petclinic-platform.git|${REPO_URL}|g" \
+            k8s/argocd/applications/dev/*.yaml
+          sed -i "s|https://github.com/<your-org>/petclinic-platform.git|${REPO_URL}|g" \
+            k8s/argocd/applications/prod/*.yaml
+
+          # Commit and push so the correct URL is in Git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/argocd/applications/
+          git commit -m "ci: set ArgoCD repoURL to ${REPO_URL}" || echo "No changes"
+          git push
+
+      # -----------------------------------------------------------------------
+      # Download ArgoCD stable install.yaml
+      # -----------------------------------------------------------------------
+      - name: Download ArgoCD install manifest
+        run: |
+          curl -sL https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml \
+            -o k8s/argocd/install/install.yaml
+
+      # -----------------------------------------------------------------------
+      # Install ArgoCD
+      # -----------------------------------------------------------------------
+      - name: Create argocd namespace
+        run: kubectl apply -f k8s/argocd/install/namespace.yaml
+
+      - name: Install ArgoCD
+        run: kubectl apply -n argocd -f k8s/argocd/install/install.yaml
+
+      - name: Wait for ArgoCD server
+        run: |
+          kubectl wait --for=condition=available deployment/argocd-server \
+            -n argocd --timeout=180s
+
+      # -----------------------------------------------------------------------
+      # Apply RBAC
+      # -----------------------------------------------------------------------
+      - name: Apply ArgoCD RBAC
+        run: kubectl apply -f k8s/argocd/argocd-rbac-cm.yaml
+
+      # -----------------------------------------------------------------------
+      # Apply Application CRDs for the target environment
+      # -----------------------------------------------------------------------
+      - name: Apply ArgoCD Application CRDs
+        run: kubectl apply -f k8s/argocd/applications/${{ github.event.inputs.environment }}/
+
+      # -----------------------------------------------------------------------
+      # Apply base namespaces
+      # -----------------------------------------------------------------------
+      - name: Apply Kubernetes namespaces
+        run: kubectl apply -f k8s/base/namespaces.yaml
+
+      # -----------------------------------------------------------------------
+      # Add platform repo to ArgoCD so it can pull Helm charts and values
+      # -----------------------------------------------------------------------
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd && sudo mv argocd /usr/local/bin/
+
+      - name: Add platform repo to ArgoCD
+        run: |
+          # Port-forward in background
+          kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+          sleep 5
+
+          # Login
+          ARGOCD_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret \
+            -o jsonpath="{.data.password}" | base64 -d)
+
+          argocd login localhost:8080 \
+            --username admin \
+            --password "${ARGOCD_PASS}" \
+            --insecure
+
+          # Add repo using PAT from secrets
+          argocd repo add "https://github.com/${{ github.repository }}.git" \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.ARGOCD_REPO_TOKEN }}"
+
+          argocd repo list
+
+      # -----------------------------------------------------------------------
+      # Print ArgoCD admin password
+      # -----------------------------------------------------------------------
+      - name: Print ArgoCD admin password
+        run: |
+          echo "ArgoCD admin password:"
+          kubectl -n argocd get secret argocd-initial-admin-secret \
+            -o jsonpath="{.data.password}" | base64 -d && echo
+          echo ""
+          echo "Access ArgoCD UI via port-forward:"
+          echo "  kubectl port-forward svc/argocd-server -n argocd 8080:443"
+
+      # -----------------------------------------------------------------------
+      # Verify Applications registered
+      # -----------------------------------------------------------------------
+      - name: List ArgoCD Applications
+        run: kubectl get applications -n argocd

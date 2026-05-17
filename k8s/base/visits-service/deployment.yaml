@@ -46,7 +46,7 @@ spec:
             readOnlyRootFilesystem: true
       containers:
         - name: visits-service
-          image: <account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/visits-service:<TAG>
+          image: ACCOUNT_ID.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/visits-service:TAG
           imagePullPolicy: Always
           ports:
             - name: http
@@ -56,6 +56,11 @@ spec:
             - configMapRef:
                 name: visits-service
           env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rds-credentials
+                  key: url
             - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -66,6 +71,11 @@ spec:
                 secretKeyRef:
                   name: rds-credentials
                   key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
           resources:
             requests:
               cpu: 100m
@@ -73,11 +83,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            readOnlyRootFilesystem: false
           startupProbe:
             httpGet:
               path: /actuator/health

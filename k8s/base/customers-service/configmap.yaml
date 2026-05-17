@@ -8,5 +8,6 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: service
 data:
+  SPRING_PROFILES_ACTIVE: "docker,mysql"
   CONFIG_SERVER_URL: "http://config-server:8888"
-  SPRING_DATASOURCE_URL: "jdbc:mysql://RDS_ENDPOINT:3306/petclinic"
+  #SPRING_DATASOURCE_URL: "jdbc:mysql://RDS_ENDPOINT:3306/petclinic"

@@ -13,7 +13,23 @@ component: service
 configMap:
   SPRING_PROFILES_ACTIVE: "docker,mysql"
   CONFIG_SERVER_URL: "http://config-server:8888"
-  SPRING_DATASOURCE_URL: "jdbc:mysql://<rds-endpoint>:3306/petclinic"
+  #SPRING_DATASOURCE_URL: "jdbc:mysql://<rds-endpoint>:3306/petclinic"
+  env:
+  - name: SPRING_DATASOURCE_URL
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: url
+  - name: SPRING_DATASOURCE_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: username
+  - name: SPRING_DATASOURCE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: password
 
 # Secret refs — secret name and keys must match ESO-synced secret from k8s/base/
 env:

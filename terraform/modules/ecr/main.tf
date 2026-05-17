@@ -6,6 +6,7 @@ resource "aws_ecr_repository" "service" {
   for_each = var.service_names
 
   name                 = "${var.project}-${var.environment}/${each.value}"
+  force_delete         = true   # allows destroy even when images exist
   image_tag_mutability = local.image_tag_mutability
 
   image_scanning_configuration {
