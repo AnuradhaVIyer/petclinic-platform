@@ -76,3 +76,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "deployer_role_name" {
+  description = "IAM role name granted cluster-admin access via EKS access entry"
+  type        = string
+  default     = "petclinic-github-actions-terraform-role"
+}

@@ -164,11 +164,17 @@ resource "aws_eks_node_group" "main" {
 
 # =============================================================================
 # EKS Access Entry (kubectl access for deploying principal)
+# Looks up the base IAM role ARN — caller identity returns a session ARN
+# which EKS access entries reject (InvalidParameterException)
 # =============================================================================
+
+data "aws_iam_role" "deployer" {
+  name = var.deployer_role_name
+}
 
 resource "aws_eks_access_entry" "deployer" {
   cluster_name  = aws_eks_cluster.main.name
-  principal_arn = data.aws_caller_identity.current.arn
+  principal_arn = data.aws_iam_role.deployer.arn
   type          = "STANDARD"
 }
 
