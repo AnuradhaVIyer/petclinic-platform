@@ -182,7 +182,7 @@ resource "aws_security_group_rule" "eks_node_egress_all" {
 
 resource "aws_security_group" "rds" {
   name        = "${local.name_prefix}-rds-sg"
-  description = "RDS MySQL — access from EKS nodes only"
+  description = "RDS MySQL - access from EKS nodes only"
   vpc_id      = aws_vpc.main.id
 
   tags = merge(local.common_tags, {
@@ -206,7 +206,7 @@ resource "aws_security_group_rule" "rds_ingress_nodes" {
 
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
-  description = "Application Load Balancer — public-facing"
+  description = "Application Load Balancer - public-facing"
   vpc_id      = aws_vpc.main.id
 
   tags = merge(local.common_tags, {
