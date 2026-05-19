@@ -49,7 +49,7 @@ module "rds" {
   deletion_protection     = var.rds_deletion_protection
 }
 
-module "dns" {
+/*module "dns" {
   count = var.domain_name != "" ? 1 : 0
   source = "../../modules/dns"
 
@@ -60,4 +60,4 @@ module "dns" {
   oidc_provider_url = module.eks.oidc_provider_url
   create_app_record = var.dns_create_app_record
   alb_name          = var.dns_alb_name
-}
+}*/
