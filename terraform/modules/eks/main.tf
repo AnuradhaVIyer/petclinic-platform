@@ -38,23 +38,6 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-# IAM role for External Secrets Operator
-module "external_secrets_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.0"
-
-  role_name = "${var.project}-${var.environment}-external-secrets"
-
-  attach_external_secrets_policy        = true
-  external_secrets_ssm_parameter_arns   = ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project}/${var.environment}/*"]
-
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["external-secrets:external-secrets"]
-    }
-  }
-}
 
 # =============================================================================
 # EKS Cluster
@@ -85,6 +68,30 @@ resource "aws_eks_cluster" "main" {
   depends_on = [
     aws_iam_role_policy_attachment.cluster_policy,
   ]
+}
+
+# IAM role for External Secrets Operator
+module "external_secrets_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name = "${var.project}-${var.environment}-external-secrets"
+
+  attach_external_secrets_policy = true
+
+  external_secrets_secrets_manager_arns = [
+    "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.project}/${var.environment}/*"
+  ]
+
+  oidc_providers = {
+    main = {
+      provider_arn = aws_iam_openid_connect_provider.eks.arn
+
+      namespace_service_accounts = [
+        "external-secrets:external-secrets"
+      ]
+    }
+  }
 }
 
 # =============================================================================
