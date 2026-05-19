@@ -5,11 +5,6 @@ name: "Terraform — Dev Infrastructure"
 #   - PR targeting main that touches dev Terraform files → plan only (posted as PR comment)
 #   - Manual dispatch → choose plan or apply
 on:
-  push:
-    branches: [main]
-    paths:
-      - "terraform/environments/dev/**"
-      - "terraform/modules/**"
   pull_request:
     branches: [main]
     paths:

@@ -9,11 +9,6 @@ name: "Terraform — Prod Infrastructure"
 #   1. workflow_dispatch with action=apply
 #   2. Approval from a reviewer configured in the "prod" GitHub Environment
 on:
-  push:
-    branches: [main]
-    paths:
-      - "terraform/environments/prod/**"
-      - "terraform/modules/**"
   pull_request:
     branches: [main]
     paths:
