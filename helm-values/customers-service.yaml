@@ -2,8 +2,9 @@
 # Customers Service — MySQL-backed, secret refs match k8s/base/customers-service/deployment.yaml
 
 image:
-  repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/customers-service"
   tag: "latest"
+registry:
+  serviceName: "customers-service"
 
 service:
   port: 8081

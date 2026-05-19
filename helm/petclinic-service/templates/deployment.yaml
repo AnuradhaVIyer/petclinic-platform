@@ -25,7 +25,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ include "petclinic-service.name" . }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.registry.accountId }}.dkr.ecr.{{ .Values.registry.region }}.amazonaws.com/petclinic-{{ .Values.registry.environment }}/{{ .Values.registry.serviceName }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

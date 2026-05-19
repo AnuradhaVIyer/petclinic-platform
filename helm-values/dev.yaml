@@ -4,6 +4,11 @@
 
 replicaCount: 1
 
+registry:
+  accountId: "749635699241"
+  region: "eu-central-1"
+  environment: "dev"
+
 # No HPA in dev — fixed single replica per service
 autoscaling:
   enabled: false

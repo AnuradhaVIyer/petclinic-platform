@@ -31,6 +31,7 @@ resource "aws_secretsmanager_secret_version" "rds_credentials" {
   secret_string = jsonencode({
     username = var.master_username
     password = random_password.master.result
+    url      = "jdbc:mysql://${aws_db_instance.mysql.address}:${aws_db_instance.mysql.port}/${aws_db_instance.mysql.db_name}"
   })
 }
 

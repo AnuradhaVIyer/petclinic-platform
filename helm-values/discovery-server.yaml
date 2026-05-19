@@ -2,8 +2,9 @@
 # Discovery Server (Eureka) — waits for Config Server only
 
 image:
-  repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/discovery-server"
   tag: "ecba47b"
+registry:
+  serviceName: "discovery-server"
 service:
   port: 8761
 component: server

@@ -22,12 +22,9 @@ jobs:
             https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Update image tags and repository URLs
+      - name: Update image tags
         env:
           IMAGE_TAG: ${{ github.event.client_payload.sha }}
-          ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          ENVIRONMENT: dev
         run: |
           services=(
             config-server
@@ -43,16 +40,8 @@ jobs:
           for service in "${services[@]}"; do
             file="helm-values/${service}.yaml"
             echo "Updating ${file}"
-
-            # Update image tag
             yq -i '.image.tag = strenv(IMAGE_TAG)' "${file}"
-
-            # Inject repository URL — no hardcoding in yaml files
-            REPO="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/petclinic-${ENVIRONMENT}/${service}"
-            yq -i ".image.repository = \"${REPO}\"" "${file}"
-
             echo "  tag=${IMAGE_TAG}"
-            echo "  repository=${REPO}"
           done
 
       - name: Commit changes

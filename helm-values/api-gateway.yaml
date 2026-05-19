@@ -2,8 +2,9 @@
 # API Gateway — public-facing, higher CPU, waits for both infra servers
 
 image:
-  repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/api-gateway"
   tag: "ecba47b"
+registry:
+  serviceName: "api-gateway"
 service:
   port: 8080
 component: gateway

@@ -4,9 +4,14 @@
 replicaCount: 1
 
 image:
-  repository: ""      # Required: {account}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-{env}/{service}
-  tag: "latest"       # Overridden by CI via: yq -i ".image.tag = \"${SHA}\"" helm-values/{service}.yaml
+  tag: "latest"
   pullPolicy: Always
+
+registry:
+  accountId: ""
+  region: "eu-central-1"
+  environment: ""
+  serviceName: ""
 
 service:
   type: ClusterIP

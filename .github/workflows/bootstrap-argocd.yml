@@ -118,6 +118,26 @@ jobs:
             --timeout=300s
 
       # -----------------------------------------------------------------------
+      # Install External Secrets Operator
+      # -----------------------------------------------------------------------
+      - name: Install External Secrets Operator
+        run: |
+          helm repo add external-secrets https://charts.external-secrets.io
+          helm repo update
+          helm upgrade --install external-secrets external-secrets/external-secrets \
+            --namespace external-secrets \
+            --create-namespace \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${{ secrets.EXTERNAL_SECRETS_ROLE_ARN }} \
+            --wait
+
+      # -----------------------------------------------------------------------
+      # Apply ClusterSecretStore
+      # -----------------------------------------------------------------------
+      - name: Apply ClusterSecretStore
+        run: |
+          kubectl apply -f k8s/argocd/install/cluster-secret-store.yaml
+                
+      # -----------------------------------------------------------------------
       # Apply ArgoCD RBAC configuration
       # -----------------------------------------------------------------------
       - name: Apply ArgoCD RBAC

@@ -2,8 +2,9 @@
 # Visits Service — MySQL-backed, secret refs match k8s/base/visits-service/deployment.yaml
 
 image:
-  repository: "<account-id>.dkr.ecr.eu-central-1.amazonaws.com/petclinic-<env>/visits-service"
   tag: "latest"
+registry:
+  serviceName: "visits-service"
 
 service:
   port: 8082

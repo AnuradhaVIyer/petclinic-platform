@@ -27,6 +27,11 @@
 # Default prod replica count — overridden per-service where different
 replicaCount: 2
 
+registry:
+  accountId: "749635699241"
+  region: "eu-central-1"
+  environment: "prod"
+
 # Enable autoscaling by default in prod.
 # Per-service min/max are set in the per-service values files to avoid blanket defaults.
 autoscaling:
