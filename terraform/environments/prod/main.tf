@@ -50,6 +50,7 @@ module "rds" {
 }
 
 module "dns" {
+  count = var.domain_name != "" ? 1 : 0
   source = "../../modules/dns"
 
   project           = var.project

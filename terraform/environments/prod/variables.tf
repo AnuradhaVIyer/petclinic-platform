@@ -141,6 +141,6 @@ variable "dns_create_app_record" {
 variable "dns_alb_name" {
   description = "Name of the ALB created by the Kubernetes Ingress"
   type        = string
-  default     = "petclinic-dev-alb"
+  default     = "petclinic-prod-alb"
 }
 
