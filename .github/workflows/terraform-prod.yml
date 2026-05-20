@@ -1,7 +1,6 @@
 name: "Terraform — Prod Infrastructure"
 
 # Triggers:
-#   - Push to main that touches prod Terraform files → plan only (NO auto-apply)
 #   - PR targeting main that touches prod Terraform files → plan only
 #   - Manual dispatch → choose plan or apply (apply requires manual approval gate)
 #
@@ -87,7 +86,6 @@ jobs:
         id: plan
         continue-on-error: true
         run: |
-          set -o pipefail
           terraform plan \
             -input=false \
             -no-color \
@@ -96,7 +94,9 @@ jobs:
             -var="domain_name=anveantechnologies.com" \
             -out=plan.out \
             2>&1 | tee plan.txt
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          TF_EXIT=${PIPESTATUS[0]}
+          echo "exitcode=${TF_EXIT}" >> $GITHUB_OUTPUT
+          exit ${TF_EXIT}
 
       - name: Upload plan artifact
         if: steps.plan.outputs.exitcode == '2'
@@ -160,29 +160,27 @@ jobs:
     name: Terraform Prod — Apply (Approval Required)
     runs-on: ubuntu-latest
     needs: plan
-    # FIX 1: Job-level if guard prevents the job from being queued at all
-    # unless all three conditions are met. This is the correct pattern for
-    # prod safety gates — runtime exit 1 checks fire too late.
+    # Only queue this job for manual dispatch with action=apply.
+    # The exitcode check is done inside the job (after checkout) to avoid
+    # the working-directory-does-not-exist error on early run steps.
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.action == 'apply' 
-    
-    # FIX 2: environment must come AFTER the if condition so the approval
-    # prompt only appears when the job is actually going to run.
+      github.event.inputs.action == 'apply'
     environment: prod
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
     steps:
+      # Checkout MUST be first — working-directory does not exist before this
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Check for infrastructure changes
         run: |
           if [ "${{ needs.plan.outputs.plan_exitcode }}" != "2" ]; then
-            echo "No infrastructure changes detected. Nothing to apply."
+            echo "No infrastructure changes detected in plan. Nothing to apply."
             exit 1
           fi
-
-      - name: Checkout
-        uses: actions/checkout@v4
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
