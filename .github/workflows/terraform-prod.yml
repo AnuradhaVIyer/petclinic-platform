@@ -165,8 +165,8 @@ jobs:
     # prod safety gates — runtime exit 1 checks fire too late.
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      github.event.inputs.action == 'apply' &&
-      #needs.plan.outputs.plan_exitcode == '2'
+      github.event.inputs.action == 'apply' 
+    
     # FIX 2: environment must come AFTER the if condition so the approval
     # prompt only appears when the job is actually going to run.
     environment: prod
@@ -180,7 +180,7 @@ jobs:
             echo "No infrastructure changes detected. Nothing to apply."
             exit 1
           fi
-          
+
       - name: Checkout
         uses: actions/checkout@v4
 
