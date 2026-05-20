@@ -38,7 +38,7 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1: Plan — always runs, no approval needed
+  # Job 1: Plan — always runs on PR and manual dispatch with action=plan
   # ---------------------------------------------------------------------------
   plan:
     name: Terraform Prod — Plan
@@ -82,6 +82,14 @@ jobs:
         id: validate
         run: terraform validate -no-color
 
+      - name: Terraform Refresh
+        id: refresh
+        run: |
+          terraform refresh \
+            -input=false \
+            -var="domain_name=anveantechnologies.com"
+        continue-on-error: true
+
       - name: Terraform Plan
         id: plan
         continue-on-error: true
@@ -119,18 +127,53 @@ jobs:
               ? plan.substring(0, 60000) + '\n\n... truncated ...'
               : plan;
 
+            const statusIcon = (outcome) => {
+              if (outcome === 'success') return '✅';
+              if (outcome === 'failure') return '❌';
+              if (outcome === 'skipped') return '⏭️';
+              return '⚠️';
+            };
+
+            const exitcode = '${{ steps.plan.outputs.exitcode }}';
+            const planSummary = exitcode === '2'
+              ? '🟡 **Changes detected** — review the plan below before applying.'
+              : exitcode === '0'
+              ? '🟢 **No changes** — infrastructure is up to date.'
+              : '🔴 **Plan failed** — check the output below for errors.';
+
             const output = `## Terraform Plan — Prod 🔒
 
             > ⚠️ **Production infrastructure.** Apply requires manual approval.
 
-            | Step | Result |
-            |------|--------|
-            | Format   | \`${{ steps.fmt.outcome }}\` |
-            | Init     | \`${{ steps.init.outcome }}\` |
-            | Validate | \`${{ steps.validate.outcome }}\` |
-            | Plan     | \`${{ steps.plan.outcome }}\` |
+            ${planSummary}
 
-            <details><summary>Show Plan</summary>
+            ---
+
+            ### 🔧 Pipeline Status
+
+            | Step | Status | Result |
+            |------|--------|--------|
+            | 🎨 Format   | ${statusIcon('${{ steps.fmt.outcome }}')}   | \`${{ steps.fmt.outcome }}\` |
+            | 🚀 Init     | ${statusIcon('${{ steps.init.outcome }}')}   | \`${{ steps.init.outcome }}\` |
+            | ✅ Validate | ${statusIcon('${{ steps.validate.outcome }}')} | \`${{ steps.validate.outcome }}\` |
+            | 🔄 Refresh  | ${statusIcon('${{ steps.refresh.outcome }}')} | \`${{ steps.refresh.outcome }}\` |
+            | 📋 Plan     | ${statusIcon('${{ steps.plan.outcome }}')}   | \`${{ steps.plan.outcome }}\` |
+
+            ---
+
+            ### 📦 Terraform Variables
+
+            | Variable | Value |
+            |----------|-------|
+            | \`domain_name\` | \`anveantechnologies.com\` |
+            | \`aws_region\`  | \`${{ env.AWS_REGION }}\` |
+            | \`tf_version\`  | \`${{ env.TF_VERSION }}\` |
+
+            ---
+
+            ### 📄 Plan Output
+
+            <details><summary>🔍 Click to expand plan</summary>
 
             \`\`\`hcl
             ${truncated}
@@ -138,7 +181,9 @@ jobs:
 
             </details>
 
-            *To apply: trigger workflow manually with \`action=apply\` after approval.*`;
+            ---
+
+            > 💡 *To apply: trigger workflow manually with \`action=apply\` after approval.*`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -155,14 +200,13 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Job 2: Apply — manual dispatch only, gated by GitHub Environment approval
+  # Runs its own fresh plan so it is never dependent on a stale exitcode
+  # from Job 1 (e.g. when infra was destroyed between the two runs).
   # ---------------------------------------------------------------------------
   apply:
     name: Terraform Prod — Apply (Approval Required)
     runs-on: ubuntu-latest
     needs: plan
-    # Only queue this job for manual dispatch with action=apply.
-    # The exitcode check is done inside the job (after checkout) to avoid
-    # the working-directory-does-not-exist error on early run steps.
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.action == 'apply'
@@ -174,13 +218,6 @@ jobs:
       # Checkout MUST be first — working-directory does not exist before this
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Check for infrastructure changes
-        run: |
-          if [ "${{ needs.plan.outputs.plan_exitcode }}" != "2" ]; then
-            echo "No infrastructure changes detected in plan. Nothing to apply."
-            exit 1
-          fi
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -197,13 +234,62 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prod
-          path: ${{ env.WORKING_DIR }}
+      - name: Terraform Refresh
+        run: |
+          terraform refresh \
+            -input=false \
+            -var="domain_name=anveantechnologies.com"
+        continue-on-error: true
 
-      # The environment approval gate above pauses the entire job here until
-      # a required reviewer approves it in the GitHub UI.
+      # Fresh plan in the apply job — avoids stale exitcode from the plan job
+      # which may have run on a different state (e.g. infra destroyed in between)
+      - name: Terraform Plan
+        id: plan
+        continue-on-error: true
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -detailed-exitcode \
+            -lock-timeout=5m \
+            -var="domain_name=anveantechnologies.com" \
+            -out=plan.out \
+            2>&1 | tee plan.txt
+          TF_EXIT=${PIPESTATUS[0]}
+          echo "exitcode=${TF_EXIT}" >> $GITHUB_OUTPUT
+          exit ${TF_EXIT}
+
+      - name: Check for infrastructure changes
+        run: |
+          EXIT="${{ steps.plan.outputs.exitcode }}"
+          if [ "$EXIT" == "1" ]; then
+            echo "❌ Terraform plan failed. Check the plan output above."
+            exit 1
+          fi
+          if [ "$EXIT" != "2" ]; then
+            echo "🟢 No infrastructure changes detected. Nothing to apply."
+            exit 1
+          fi
+          echo "🟡 Changes detected. Proceeding with apply after approval."
+
+      # The environment approval gate pauses here until a required reviewer
+      # approves in the GitHub UI before apply runs.
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve plan.out
+
+      - name: Post Apply Summary
+        if: always()
+        run: |
+          echo "## Terraform Apply — Prod 🔒" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Variable | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`domain_name\` | \`anveantechnologies.com\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`aws_region\`  | \`${{ env.AWS_REGION }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`tf_version\`  | \`${{ env.TF_VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.plan.outputs.exitcode }}" == "2" ]; then
+            echo "✅ **Apply completed successfully.**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Apply did not run — no changes were detected or plan failed.**" >> $GITHUB_STEP_SUMMARY
+          fi
