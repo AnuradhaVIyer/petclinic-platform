@@ -5,12 +5,8 @@ name: "Terraform — Prod Infrastructure"
 #   - Manual dispatch → choose plan or apply (apply requires manual approval gate)
 #
 # PROD SAFETY: Apply NEVER runs automatically. It requires:
-#   1. workflow_dispatch with action=apply
-#   2. Approval from a reviewer configured in the "prod" GitHub Environment
-#
-# WORKFLOW:
-#   Step 1 — Run with action=plan  → reviews changes, uploads plan artifact
-#   Step 2 — Run with action=apply → approval popup → downloads artifact → applies
+#   1. workflow_dispatch with action=plan  → generates and uploads plan artifact
+#   2. workflow_dispatch with action=apply → downloads artifact, approval gate, applies
 
 on:
   pull_request:
@@ -44,9 +40,9 @@ env:
 jobs:
   # ---------------------------------------------------------------------------
   # Job 1: Plan
-  #   - Runs automatically on PRs
+  #   - Runs on PR automatically
   #   - Runs when action=plan on manual dispatch
-  #   - Never runs when action=apply (apply downloads the saved artifact instead)
+  #   - Skipped entirely when action=apply
   # ---------------------------------------------------------------------------
   plan:
     name: Terraform Prod — Plan
@@ -91,11 +87,9 @@ jobs:
         id: validate
         run: terraform validate -no-color
 
-      - name: Terraform Refresh
-        id: refresh
-        run: terraform refresh -input=false
-        continue-on-error: true
-
+      # NOTE: No terraform refresh here — terraform plan already refreshes
+      # state internally by default. Adding an explicit refresh was causing
+      # silent failures that made plan return exitcode 0 incorrectly.
       - name: Terraform Plan
         id: plan
         continue-on-error: true
@@ -112,7 +106,7 @@ jobs:
           exit ${TF_EXIT}
 
       # Only upload when there are actual changes (exitcode=2)
-      # apply job will fail cleanly if no artifact exists
+      # apply job will fail clearly at download step if no artifact exists
       - name: Upload plan artifact
         if: steps.plan.outputs.exitcode == '2'
         uses: actions/upload-artifact@v4
@@ -163,7 +157,6 @@ jobs:
             | 🎨 Format   | ${statusIcon('${{ steps.fmt.outcome }}')}   | \`${{ steps.fmt.outcome }}\` |
             | 🚀 Init     | ${statusIcon('${{ steps.init.outcome }}')}   | \`${{ steps.init.outcome }}\` |
             | ✅ Validate | ${statusIcon('${{ steps.validate.outcome }}')} | \`${{ steps.validate.outcome }}\` |
-            | 🔄 Refresh  | ${statusIcon('${{ steps.refresh.outcome }}')} | \`${{ steps.refresh.outcome }}\` |
             | 📋 Plan     | ${statusIcon('${{ steps.plan.outcome }}')}   | \`${{ steps.plan.outcome }}\` |
 
             ---
@@ -261,8 +254,8 @@ jobs:
         run: terraform init -input=false
 
       # Downloads the plan.out saved by the most recent action=plan run.
-      # If no artifact exists (plan was never run or showed no changes),
-      # this step fails with a clear message — do not re-plan here.
+      # If no artifact exists (plan never ran or had no changes), this step
+      # fails with a clear "artifact not found" message — intentional.
       - name: Download plan artifact
         uses: actions/download-artifact@v4
         with:
