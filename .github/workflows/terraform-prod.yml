@@ -88,8 +88,8 @@ jobs:
         run: terraform validate -no-color
 
       # NOTE: No terraform refresh here — terraform plan already refreshes
-      # state internally by default. Adding an explicit refresh was causing
-      # silent failures that made plan return exitcode 0 incorrectly.
+      # state internally by default. An explicit refresh was causing silent
+      # failures that made plan return exitcode 0 incorrectly.
       - name: Terraform Plan
         id: plan
         continue-on-error: true
@@ -220,7 +220,8 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 2: Apply
   #   - Only runs when action=apply on manual dispatch
-  #   - Does NOT re-run plan — downloads the artifact saved by the plan job
+  #   - Downloads artifact from the most recent successful plan run
+  #     using dawidd6/action-download-artifact which can cross workflow runs
   #   - Approval popup fires when this job is queued (before any steps run)
   # ---------------------------------------------------------------------------
   apply:
@@ -253,14 +254,18 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
-      # Downloads the plan.out saved by the most recent action=plan run.
-      # If no artifact exists (plan never ran or had no changes), this step
-      # fails with a clear "artifact not found" message — intentional.
+      # dawidd6/action-download-artifact can find artifacts across workflow
+      # runs — actions/download-artifact@v4 only looks within the current run
+      # and would always fail here since plan ran in a different run.
       - name: Download plan artifact
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v6
         with:
+          workflow: terraform-prod.yml
           name: tfplan-prod
           path: ${{ env.WORKING_DIR }}
+          if_no_artifact_found: fail
+          # Downloads from the most recent successful run that has the artifact.
+          # Change to run_id: <id> to pin to a specific plan run.
 
       - name: Show saved plan before applying
         run: |
