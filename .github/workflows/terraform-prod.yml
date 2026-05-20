@@ -85,7 +85,9 @@ jobs:
 
       - name: Terraform Plan
         id: plan
+        continue-on-error: true
         run: |
+          set -o pipefail
           terraform plan \
             -input=false \
             -no-color \
@@ -94,7 +96,6 @@ jobs:
             -var="domain_name=anveantechnologies.com" \
             -out=plan.out \
             2>&1 | tee plan.txt
-
           echo "exitcode=$?" >> $GITHUB_OUTPUT
 
       - name: Upload plan artifact
@@ -165,7 +166,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.action == 'apply' &&
-      needs.plan.outputs.plan_exitcode == '2'
+      #needs.plan.outputs.plan_exitcode == '2'
     # FIX 2: environment must come AFTER the if condition so the approval
     # prompt only appears when the job is actually going to run.
     environment: prod
@@ -173,6 +174,13 @@ jobs:
       run:
         working-directory: ${{ env.WORKING_DIR }}
     steps:
+      - name: Check for infrastructure changes
+        run: |
+          if [ "${{ needs.plan.outputs.plan_exitcode }}" != "2" ]; then
+            echo "No infrastructure changes detected. Nothing to apply."
+            exit 1
+          fi
+          
       - name: Checkout
         uses: actions/checkout@v4
 
